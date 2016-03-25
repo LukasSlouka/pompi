@@ -8,11 +8,17 @@
 #include <stdio.h>
 #include <cstring>
 #include <algorithm>
+#include <iomanip>
+#include <fstream>
 
 namespace pompi
 {
 
-    // Declaration
+    enum OutputFormat
+    {
+        GNUPLOT,
+    };
+
 
     class Base
     {
@@ -38,9 +44,19 @@ namespace pompi
 
             double GetExecutionTime();
 
+            double GetAverageExecutionTime(int trials);
+
             void ClearAllCounters();
 
             void ClearTimers();
+
+            void PrintThreadResultsToFile(int thread_id, int total_threads, char * file_name, OutputFormat format);
+
+            void PrintThreadResults(int thread_id, int total_threads);
+
+            void PrintAggregatedResultsToFile(int total_threads, char * file_name, OutputFormat format);
+
+            void PrintAggregatedResults(int total_threads);
 
         private:
 
@@ -49,9 +65,13 @@ namespace pompi
             void GetAggregatedCounters(long long * counters);
 
             void ClearThreadCounters(int thread_id);
+
+            void PrintThreadGnuplot(int thread_id, int total_threads, std::ofstream &output);
+
+            void PrintAggregatedGnuplot(int total_threads, std::ofstream &output);
     };
 
-    // PUBLIC
+
 
     Base::Base()
     {
@@ -122,7 +142,10 @@ namespace pompi
         }
 
         #pragma omp single
-        execution_time_start_ = omp_get_wtime();
+        {
+            if(execution_time_start_ == 0)
+                execution_time_start_ = omp_get_wtime();
+        }
     }
 
     void Base::Stop()
@@ -152,6 +175,11 @@ namespace pompi
         return execution_time_end_ - execution_time_start_;
     }
 
+    double Base::GetAverageExecutionTime(int trials)
+    {
+        return GetExecutionTime()/trials;
+    }
+
     void Base::ClearAllCounters()
     {
         for(int thread = 0; thread < max_threads_; ++thread)
@@ -164,8 +192,6 @@ namespace pompi
         execution_time_start_ = 0;
         execution_time_end_ = 0;
     }
-
-    // PRIVATE
 
     void Base::GetThreadCounters(int thread_id, long long * counters)
     {
@@ -191,5 +217,110 @@ namespace pompi
     {
         for(int event = 0; event < papi_events_.size(); ++event)
             thread_data_[thread_id][event] = 0;
+    }
+
+    void Base::PrintThreadResults(int thread_id, int total_threads)
+    {
+        if((thread_id > max_threads_) || (thread_id < 0))
+        {
+            std::cerr << "[Warning] invalid thread_id in PrintThreadResults" << std::endl;
+            return;
+        }
+
+        long long results[papi_events_.size()];
+        GetThreadCounters(thread_id, results);
+
+        std::cout << "Results for thread #" << thread_id << " out of " << total_threads << " threads" << std::endl;
+        for(int event = 0; event < papi_events_.size(); ++event)
+        {
+            std::cout << papi_event_names_[event] + ':'
+                      << std::setw(20) << results[event]
+                      << std::endl;
+        }
+    }
+
+    void Base::PrintAggregatedResults(int total_threads)
+    {
+        std::cout << "Aggregated results on " << total_threads << " threads" << std::endl;
+        long long results[papi_events_.size()];
+        GetAggregatedCounters(results);
+
+        for(int event = 0; event < papi_events_.size(); ++event)
+        {
+            std::cout << papi_event_names_[event] + ':'
+                      << std::setw(20) << results[event]
+                      << std::endl;
+        }
+    }
+
+    void Base::PrintThreadResultsToFile(int thread_id, int total_threads, char * file_name, OutputFormat format)
+    {
+        if((thread_id < 0)||(thread_id > total_threads))
+        {
+            std::cerr << "[Warning] Unable to print thread result to file" << std::endl;
+            return;
+        }
+
+        std::ofstream output;
+        output.open(file_name, std::ofstream::app);
+
+        switch(format)
+        {
+            case GNUPLOT: {
+                PrintThreadGnuplot(thread_id, total_threads, output);
+                break;
+            }
+        }
+
+        output.close();
+    }
+
+    void Base::PrintAggregatedResultsToFile(int total_threads, char * file_name, OutputFormat format)
+    {
+        std::ofstream output;
+        output.open(file_name, std::ofstream::app);
+
+        switch(format)
+        {
+            case GNUPLOT: {
+                PrintAggregatedGnuplot(total_threads, output);
+                break;
+            }
+
+        }
+
+        output.close();
+    }
+
+    void Base::PrintThreadGnuplot(int thread_id, int total_threads, std::ofstream &output)
+    {
+        output << std::setw(8) << "#THREADS";
+        for(int event = 0; event < papi_events_.size(); ++event)
+            output << std::setw(16) << papi_event_names_[event];
+        output << std::endl;
+
+        long long results[papi_events_.size()];
+        GetThreadCounters(thread_id, results);
+
+        output << std::setw(8) << total_threads;
+        for(int event = 0; event < papi_events_.size(); ++event)
+            output << std::setw(16) << results[event];
+        output << std::endl;
+    }
+
+    void Base::PrintAggregatedGnuplot(int total_threads, std::ofstream &output)
+    {
+        output << std::setw(8) << "#THREADS";
+        for(int event = 0; event < papi_events_.size(); ++event)
+            output << std::setw(16) << papi_event_names_[event];
+        output << std::endl;
+
+        long long results[papi_events_.size()];
+        GetAggregatedCounters(results);
+
+        output << std::setw(8) << total_threads;
+        for(int event = 0; event < papi_events_.size(); ++event)
+            output << std::setw(16) << results[event];
+        output << std::endl;
     }
 }
