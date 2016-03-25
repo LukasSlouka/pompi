@@ -14,9 +14,19 @@
 namespace pompi
 {
 
+    #define ALL_THREADS -1
+
     enum OutputFormat
     {
         GNUPLOT,
+    };
+
+
+    enum PapiDerivedStat
+    {
+        D_L1_TMR,
+        D_L2_TMR,
+        D_L3_TMR,
     };
 
 
@@ -46,31 +56,30 @@ namespace pompi
 
             double GetAverageExecutionTime(int trials);
 
-            void ClearAllCounters();
+            void ClearCounters(int thread_id = ALL_THREADS);
 
             void ClearTimers();
 
-            void PrintThreadResultsToFile(int thread_id, int total_threads, char * file_name, OutputFormat format);
+            void PrintResults(int total_threads, int thread_id = ALL_THREADS);
 
-            void PrintThreadResults(int thread_id, int total_threads);
-
-            void PrintAggregatedResultsToFile(int total_threads, char * file_name, OutputFormat format);
-
-            void PrintAggregatedResults(int total_threads);
+            void PrintResultsToFile(int total_threads, char * file_name, OutputFormat format, int thread_id = ALL_THREADS);
 
         private:
 
-            void GetThreadCounters(int thread_id, long long * counters);
+            void GetCounters(long long * counters, int thread_id = ALL_THREADS);
 
-            void GetAggregatedCounters(long long * counters);
+            int GetEventIndex(int event_code);
 
-            void ClearThreadCounters(int thread_id);
+            bool EventAvailable(int event_code);
 
-            void PrintThreadGnuplot(int thread_id, int total_threads, std::ofstream &output);
+            void GetDerivedStats(std::vector< PapiDerivedStat > & stats);
 
-            void PrintAggregatedGnuplot(int total_threads, std::ofstream &output);
+            std::string GetDerivedStatName(PapiDerivedStat stat);
+
+            void PrintGnuplot(int total_threads, std::ofstream &output, int thread_id = ALL_THREADS);
+
+            double ComputeDerivedStat(PapiDerivedStat stat, int thread_id = ALL_THREADS);
     };
-
 
 
     Base::Base()
@@ -108,6 +117,7 @@ namespace pompi
         }
     }
 
+
     void Base::AddEvent(char * event)
     {
         int event_id;
@@ -129,6 +139,7 @@ namespace pompi
         }
     }
 
+
     void Base::Start()
     {
         int thread_id = omp_get_thread_num();
@@ -147,6 +158,7 @@ namespace pompi
                 execution_time_start_ = omp_get_wtime();
         }
     }
+
 
     void Base::Stop()
     {
@@ -170,22 +182,34 @@ namespace pompi
         PAPI_unregister_thread();
     }
 
+
     double Base::GetExecutionTime()
     {
         return execution_time_end_ - execution_time_start_;
     }
+
 
     double Base::GetAverageExecutionTime(int trials)
     {
         return GetExecutionTime()/trials;
     }
 
-    void Base::ClearAllCounters()
-    {
-        for(int thread = 0; thread < max_threads_; ++thread)
-            ClearThreadCounters(thread);
 
+    void Base::ClearCounters(int thread_id)
+    {
+        if((thread_id < 0)||(thread_id > max_threads_))
+        {
+            for(int event = 0; event < papi_events_.size(); ++event)
+                thread_data_[thread_id][event] = 0;
+        }
+        else
+        {
+            for(int thread = 0; thread < max_threads_; ++thread)
+            for(int event = 0; event < papi_events_.size(); ++event)
+                thread_data_[thread][event] = 0;                        
+        }
     }
+
 
     void Base::ClearTimers()
     {
@@ -193,73 +217,131 @@ namespace pompi
         execution_time_end_ = 0;
     }
 
-    void Base::GetThreadCounters(int thread_id, long long * counters)
-    {
-        for(int event = 0; event < papi_events_.size(); ++event)
-            counters[event] = thread_data_[thread_id][event];
-    }
 
-    void Base::GetAggregatedCounters(long long * counters)
+    void Base::GetCounters(long long * counters, int thread_id)
     {
-        long long thread_counters[papi_events_.size()];
         for(int event = 0; event < papi_events_.size(); ++event)
             counters[event] = 0;
 
-        for(int thread = 0; thread < max_threads_; ++thread)
+        if(thread_id == ALL_THREADS)
         {
-            GetThreadCounters(thread, thread_counters);
+            for(int thread = 0; thread < max_threads_; ++thread)
             for(int event = 0; event < papi_events_.size(); ++event)
-                counters[event] += thread_counters[event];
+                counters[event] += thread_data_[thread][event];
+        }
+        else
+        {
+            for(int event = 0; event < papi_events_.size(); ++event)
+                counters[event] = thread_data_[thread_id][event];
+        }
+        
+    }
+
+
+    bool Base::EventAvailable(int event_code)
+    {
+        std::vector<int>::iterator event;
+        event = std::find(papi_events_.begin(), papi_events_.end(), event_code);
+        return (event == papi_events_.end()) ? false : true;
+    }
+
+
+    int Base::GetEventIndex(int event_code)
+    {
+        for(int index = 0; index < papi_events_.size(); ++index)
+            if(papi_events_[index] == event_code)
+                return index;
+        return 0;
+    }
+
+
+    void Base::GetDerivedStats(std::vector< PapiDerivedStat > &stats)
+    {
+        if (EventAvailable(PAPI_LD_INS) && EventAvailable(PAPI_SR_INS) && EventAvailable(PAPI_L1_TCM))
+            stats.push_back(D_L1_TMR);
+        
+        if (EventAvailable(PAPI_L2_TCA) && EventAvailable(PAPI_L2_TCM))
+            stats.push_back(D_L2_TMR);
+        
+        if (EventAvailable(PAPI_L3_TCA) && EventAvailable(PAPI_L3_TCM))
+            stats.push_back(D_L3_TMR);
+    }
+
+
+    double Base::ComputeDerivedStat(PapiDerivedStat stat, int thread_id)
+    {
+        long long counters[papi_events_.size()];
+        GetCounters(counters, thread_id);
+
+        switch(stat)
+        {
+            case D_L1_TMR: {
+                return (counters[GetEventIndex(PAPI_L1_TCM)] / (double)(counters[GetEventIndex(PAPI_SR_INS)] + counters[GetEventIndex(PAPI_LD_INS)]));
+            }
+            case D_L2_TMR: {
+                return (counters[GetEventIndex(PAPI_L2_TCM)] / (double)counters[GetEventIndex(PAPI_L2_TCA)]);
+            }
+            case D_L3_TMR: {
+                return (counters[GetEventIndex(PAPI_L3_TCM)] / (double)counters[GetEventIndex(PAPI_L3_TCA)]);
+            }
         }
     }
 
-    void Base::ClearThreadCounters(int thread_id)
+
+    std::string Base::GetDerivedStatName(PapiDerivedStat stat)
     {
-        for(int event = 0; event < papi_events_.size(); ++event)
-            thread_data_[thread_id][event] = 0;
+        switch(stat)
+        {
+            case D_L1_TMR: {
+                return "D_L1_TMR";
+            }
+            case D_L2_TMR: {
+                return "D_L2_TMR";
+            }
+            case D_L3_TMR: {
+                return "D_L3_TMR";
+            }
+        }
     }
 
-    void Base::PrintThreadResults(int thread_id, int total_threads)
+
+    void Base::PrintResults(int total_threads, int thread_id)
     {
-        if((thread_id > max_threads_) || (thread_id < 0))
+        std::vector< PapiDerivedStat > stats;
+        GetDerivedStats(stats);
+
+        if((thread_id >= 0)&&(thread_id <= max_threads_))
+            std::cout << "Results for thread #" << thread_id << " out of "
+                      << total_threads << " threads" << std::endl;
+        else
         {
-            std::cerr << "[Warning] invalid thread_id in PrintThreadResults" << std::endl;
-            return;
+            std::cout << "Aggregated results on " << total_threads << " threads" << std::endl;
+            thread_id = ALL_THREADS;
         }
 
         long long results[papi_events_.size()];
-        GetThreadCounters(thread_id, results);
+        GetCounters(results, thread_id);
 
-        std::cout << "Results for thread #" << thread_id << " out of " << total_threads << " threads" << std::endl;
         for(int event = 0; event < papi_events_.size(); ++event)
         {
             std::cout << papi_event_names_[event] + ':'
                       << std::setw(20) << results[event]
                       << std::endl;
         }
-    }
 
-    void Base::PrintAggregatedResults(int total_threads)
-    {
-        std::cout << "Aggregated results on " << total_threads << " threads" << std::endl;
-        long long results[papi_events_.size()];
-        GetAggregatedCounters(results);
-
-        for(int event = 0; event < papi_events_.size(); ++event)
+        for(int d_event = 0; d_event < stats.size(); ++d_event)
         {
-            std::cout << papi_event_names_[event] + ':'
-                      << std::setw(20) << results[event]
+            std::cout << GetDerivedStatName(stats[d_event]) + ':'
+                      << std::setw(20) << ComputeDerivedStat(stats[d_event], thread_id)
                       << std::endl;
         }
     }
 
-    void Base::PrintThreadResultsToFile(int thread_id, int total_threads, char * file_name, OutputFormat format)
+
+    void Base::PrintResultsToFile(int total_threads, char * file_name, OutputFormat format, int thread_id)
     {
         if((thread_id < 0)||(thread_id > total_threads))
-        {
-            std::cerr << "[Warning] Unable to print thread result to file" << std::endl;
-            return;
-        }
+            thread_id = ALL_THREADS;
 
         std::ofstream output;
         output.open(file_name, std::ofstream::app);
@@ -267,7 +349,7 @@ namespace pompi
         switch(format)
         {
             case GNUPLOT: {
-                PrintThreadGnuplot(thread_id, total_threads, output);
+                PrintGnuplot(total_threads, output, thread_id);
                 break;
             }
         }
@@ -275,52 +357,35 @@ namespace pompi
         output.close();
     }
 
-    void Base::PrintAggregatedResultsToFile(int total_threads, char * file_name, OutputFormat format)
+
+    void Base::PrintGnuplot(int total_threads, std::ofstream &output, int thread_id)
     {
-        std::ofstream output;
-        output.open(file_name, std::ofstream::app);
+        std::vector< PapiDerivedStat > stats;
+        GetDerivedStats(stats);
 
-        switch(format)
-        {
-            case GNUPLOT: {
-                PrintAggregatedGnuplot(total_threads, output);
-                break;
-            }
+        if(thread_id == ALL_THREADS)
+            output << std::setw(8) << "#THREADS";
+        else
+            output << std::setw(7) << "#THREAD";
 
-        }
-
-        output.close();
-    }
-
-    void Base::PrintThreadGnuplot(int thread_id, int total_threads, std::ofstream &output)
-    {
-        output << std::setw(8) << "#THREADS";
         for(int event = 0; event < papi_events_.size(); ++event)
             output << std::setw(16) << papi_event_names_[event];
+        for(int d_event = 0; d_event < stats.size(); ++d_event)
+            output << std::setw(16) << GetDerivedStatName(stats[d_event]);
         output << std::endl;
 
         long long results[papi_events_.size()];
-        GetThreadCounters(thread_id, results);
+        GetCounters(results, thread_id);
 
-        output << std::setw(8) << total_threads;
+        if(thread_id == ALL_THREADS)
+            output << std::setw(8) << total_threads;
+        else
+            output << std::setw(7) << thread_id;
+
         for(int event = 0; event < papi_events_.size(); ++event)
             output << std::setw(16) << results[event];
-        output << std::endl;
-    }
-
-    void Base::PrintAggregatedGnuplot(int total_threads, std::ofstream &output)
-    {
-        output << std::setw(8) << "#THREADS";
-        for(int event = 0; event < papi_events_.size(); ++event)
-            output << std::setw(16) << papi_event_names_[event];
-        output << std::endl;
-
-        long long results[papi_events_.size()];
-        GetAggregatedCounters(results);
-
-        output << std::setw(8) << total_threads;
-        for(int event = 0; event < papi_events_.size(); ++event)
-            output << std::setw(16) << results[event];
+        for(int d_event = 0; d_event < stats.size(); ++d_event)
+            output << std::setw(16) << ComputeDerivedStat(stats[d_event], thread_id);
         output << std::endl;
     }
 }
