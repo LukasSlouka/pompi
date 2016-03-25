@@ -32,6 +32,10 @@ namespace pompi
             Base();
 
             void AddEvent(char * event);
+
+            void Start();
+
+            void Stop();
     };
 
     // Implementation
@@ -82,10 +86,50 @@ namespace pompi
             {
               papi_event_names_.push_back(std::string(event));
               papi_events_.push_back(event_id);
+              for(int i = 0; i < max_threads_; ++i)
+                thread_data_[i].push_back(0);
               std::clog << "[Log] Adding papi event `" << event << "`" << std::endl;
             }
             else
                 std::cerr << "[Warning] Papi event `" << event << "` already listed, skipping" << std::endl;
         }
+    }
+
+    void Base::Start()
+    {
+        int thread_id = omp_get_thread_num();
+
+        int PAPI_return_value = PAPI_start_counters(&papi_events_[0], papi_events_.size());
+        if(PAPI_return_value != PAPI_OK)
+        {
+            #pragma omp critical
+            std::cerr << "[Error] Could not start counters in thread #" << thread_id << std::endl;
+            exit(1);
+        }
+
+        #pragma omp single
+        execution_time_start_ = omp_get_wtime();
+    }
+
+    void Base::Stop()
+    {
+        #pragma omp single
+        execution_time_end_ = omp_get_wtime();
+
+        long long counter_values[papi_events_.size()];
+
+        int thread_id = omp_get_thread_num();
+        int PAPI_return_value = PAPI_stop_counters(counter_values, papi_events_.size());
+        if(PAPI_return_value != PAPI_OK)
+        {
+            #pragma omp critical
+            std::cerr << "[Error] Could not stop counters in thread #" << thread_id << std::endl;
+            exit(1);
+        }
+
+        for(int event = 0; event < papi_events_.size(); ++event)
+            thread_data_[thread_id][event] = counter_values[event];
+
+        PAPI_unregister_thread();
     }
 }
