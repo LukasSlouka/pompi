@@ -26,7 +26,6 @@ namespace pompi
             std::vector< std::vector< long long > > thread_data_;
             int max_threads_;
 
-
         public:
 
             Base();
@@ -36,9 +35,23 @@ namespace pompi
             void Start();
 
             void Stop();
+
+            double GetExecutionTime();
+
+            void ClearAllCounters();
+
+            void ClearTimers();
+
+        private:
+
+            void GetThreadCounters(int thread_id, long long * counters);
+
+            void GetAggregatedCounters(long long * counters);
+
+            void ClearThreadCounters(int thread_id);
     };
 
-    // Implementation
+    // PUBLIC
 
     Base::Base()
     {
@@ -46,6 +59,7 @@ namespace pompi
         std::clog << "[Log] Maximum number of threads is " << max_threads_ << std::endl;
 
         thread_data_.resize(max_threads_);
+        ClearTimers();
 
         int PAPI_return_value = PAPI_library_init(PAPI_VER_CURRENT);
         if(PAPI_return_value != PAPI_VER_CURRENT)
@@ -128,8 +142,54 @@ namespace pompi
         }
 
         for(int event = 0; event < papi_events_.size(); ++event)
-            thread_data_[thread_id][event] = counter_values[event];
+            thread_data_[thread_id][event] += counter_values[event];
 
         PAPI_unregister_thread();
+    }
+
+    double Base::GetExecutionTime()
+    {
+        return execution_time_end_ - execution_time_start_;
+    }
+
+    void Base::ClearAllCounters()
+    {
+        for(int thread = 0; thread < max_threads_; ++thread)
+            ClearThreadCounters(thread);
+
+    }
+
+    void Base::ClearTimers()
+    {
+        execution_time_start_ = 0;
+        execution_time_end_ = 0;
+    }
+
+    // PRIVATE
+
+    void Base::GetThreadCounters(int thread_id, long long * counters)
+    {
+        for(int event = 0; event < papi_events_.size(); ++event)
+            counters[event] = thread_data_[thread_id][event];
+    }
+
+    void Base::GetAggregatedCounters(long long * counters)
+    {
+        long long thread_counters[papi_events_.size()];
+        for(int event = 0; event < papi_events_.size(); ++event)
+            counters[event] = 0;
+
+        for(int thread = 0; thread < max_threads_; ++thread)
+        {
+            GetThreadCounters(thread, thread_counters);
+            for(int event = 0; event < papi_events_.size(); ++event)
+                counters[event] += thread_counters[event];
+        }
+    }
+
+    void Base::ClearThreadCounters(int thread_id)
+    {
+        for(int event = 0; event < papi_events_.size(); ++event)
+            thread_data_[thread_id][event] = 0;
     }
 }
