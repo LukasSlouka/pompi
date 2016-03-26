@@ -1,2 +1,4 @@
-# pompi
+POMPI
+=====
+
 PAPI for OpenMP wrapper
