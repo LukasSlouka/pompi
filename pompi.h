@@ -76,6 +76,7 @@ namespace pompi
         D_L1_DMR,   /**< Derived L1 cache data missrate [%]*/
         D_L2_DMR,   /**< Derived L2 cache data missrate [%]*/
         D_L3_DMR,   /**< Derived L3 cache data missrate [%]*/
+        D_BR_MPR,   /**< Derived branch missprediction rate [%]*/
     };
 
     /**
@@ -484,6 +485,10 @@ namespace pompi
 
         if (EventAvailable(PAPI_L3_DCA) && EventAvailable(PAPI_L3_DCM))
             stats.push_back(D_L3_DMR);
+
+        if (( EventAvailable(PAPI_BR_MSP) && EventAvailable(PAPI_BR_CN) )||
+            ( EventAvailable(PAPI_BR_MSP) && EventAvailable(PAPI_BR_PRC) ))
+            stats.push_back(D_BR_MPR);
     }
 
 
@@ -513,6 +518,12 @@ namespace pompi
             case D_L3_DMR: {
                 return (counters[GetEventIndex(PAPI_L3_DCM)] / (double)counters[GetEventIndex(PAPI_L3_DCA)]);
             }
+            case D_BR_MPR: {
+                if(EventAvailable(PAPI_BR_CN))
+                    return (counters[GetEventIndex(PAPI_BR_MSP)] / (double)counters[GetEventIndex(PAPI_BR_CN)]);
+                else
+                    return (counters[GetEventIndex(PAPI_BR_MSP)] / (double)(counters[GetEventIndex(PAPI_BR_MSP)] + counters[GetEventIndex(PAPI_BR_PRC)]));
+            }
         }
     }
 
@@ -538,6 +549,9 @@ namespace pompi
             }
             case D_L3_DMR: {
                 return "D_L3_DMR";
+            }
+            case D_BR_MPR: {
+                return "D_BR_MPR";
             }
         }
     }
