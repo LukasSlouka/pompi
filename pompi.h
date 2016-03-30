@@ -73,6 +73,9 @@ namespace pompi
         D_L1_TMR,   /**< Derived L1 cache total missrate [%]*/
         D_L2_TMR,   /**< Derived L2 cache total missrate [%]*/
         D_L3_TMR,   /**< Derived L3 cache total missrate [%]*/
+        D_L1_DMR,   /**< Derived L1 cache data missrate [%]*/
+        D_L2_DMR,   /**< Derived L2 cache data missrate [%]*/
+        D_L3_DMR,   /**< Derived L3 cache data missrate [%]*/
     };
 
     /**
@@ -472,6 +475,15 @@ namespace pompi
         
         if (EventAvailable(PAPI_L3_TCA) && EventAvailable(PAPI_L3_TCM))
             stats.push_back(D_L3_TMR);
+
+        if (EventAvailable(PAPI_L1_DCA) && EventAvailable(PAPI_L1_DCM))
+            stats.push_back(D_L1_DMR);
+
+        if (EventAvailable(PAPI_L2_DCA) && EventAvailable(PAPI_L2_DCM))
+            stats.push_back(D_L2_DMR);
+
+        if (EventAvailable(PAPI_L3_DCA) && EventAvailable(PAPI_L3_DCM))
+            stats.push_back(D_L3_DMR);
     }
 
 
@@ -492,6 +504,15 @@ namespace pompi
             case D_L3_TMR: {
                 return (counters[GetEventIndex(PAPI_L3_TCM)] / (double)counters[GetEventIndex(PAPI_L3_TCA)]);
             }
+            case D_L1_DMR: {
+                return (counters[GetEventIndex(PAPI_L1_DCM)] / (double)counters[GetEventIndex(PAPI_L1_DCA)]);
+            }
+            case D_L2_DMR: {
+                return (counters[GetEventIndex(PAPI_L2_DCM)] / (double)counters[GetEventIndex(PAPI_L2_DCA)]);
+            }
+            case D_L3_DMR: {
+                return (counters[GetEventIndex(PAPI_L3_DCM)] / (double)counters[GetEventIndex(PAPI_L3_DCA)]);
+            }
         }
     }
 
@@ -508,6 +529,15 @@ namespace pompi
             }
             case D_L3_TMR: {
                 return "D_L3_TMR";
+            }
+            case D_L1_DMR: {
+                return "D_L1_DMR";
+            }
+            case D_L2_DMR: {
+                return "D_L2_DMR";
+            }
+            case D_L3_DMR: {
+                return "D_L3_DMR";
             }
         }
     }
