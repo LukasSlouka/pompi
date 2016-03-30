@@ -29,7 +29,7 @@
  *        of OpenMP multithreaded applications using Performance Application
  *        Programmable Interface (PAPI) in C++ code. For all intents and purposes
  *        it acts like a wrapper.
- * @author Lukas Slouka
+ * @author Lukas Slouka <lukslouka@gmail.com>
  * @version 1.0
  */
 
