@@ -364,6 +364,8 @@ namespace pompi
 
     void Base::Stop()
     {
+        #pragma omp barrier
+
         #pragma omp single
         execution_time_duration_ += omp_get_wtime() - execution_time_start_;
 
