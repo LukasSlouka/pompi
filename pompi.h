@@ -404,14 +404,14 @@ namespace pompi
     {
         if((thread_id < 0)||(thread_id > max_threads_))
         {
+            for(int thread = 0; thread < max_threads_; ++thread)
             for(int event = 0; event < papi_events_.size(); ++event)
-                thread_data_[thread_id][event] = 0;
+                thread_data_[thread][event] = 0;   
         }
         else
         {
-            for(int thread = 0; thread < max_threads_; ++thread)
             for(int event = 0; event < papi_events_.size(); ++event)
-                thread_data_[thread][event] = 0;                        
+                thread_data_[thread_id][event] = 0;                     
         }
     }
 
