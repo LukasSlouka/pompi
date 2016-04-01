@@ -498,28 +498,28 @@ namespace pompi
         switch(stat)
         {
             case D_L1_TMR: {
-                return (counters[GetEventIndex(PAPI_L1_TCM)] / (double)(counters[GetEventIndex(PAPI_SR_INS)] + counters[GetEventIndex(PAPI_LD_INS)]));
+                return 100.0 * (counters[GetEventIndex(PAPI_L1_TCM)] / (double)(counters[GetEventIndex(PAPI_SR_INS)] + counters[GetEventIndex(PAPI_LD_INS)]));
             }
             case D_L2_TMR: {
-                return (counters[GetEventIndex(PAPI_L2_TCM)] / (double)counters[GetEventIndex(PAPI_L2_TCA)]);
+                return 100.0 * (counters[GetEventIndex(PAPI_L2_TCM)] / (double)counters[GetEventIndex(PAPI_L2_TCA)]);
             }
             case D_L3_TMR: {
-                return (counters[GetEventIndex(PAPI_L3_TCM)] / (double)counters[GetEventIndex(PAPI_L3_TCA)]);
+                return 100.0 * (counters[GetEventIndex(PAPI_L3_TCM)] / (double)counters[GetEventIndex(PAPI_L3_TCA)]);
             }
             case D_L1_DMR: {
-                return (counters[GetEventIndex(PAPI_L1_DCM)] / (double)counters[GetEventIndex(PAPI_L1_DCA)]);
+                return 100.0 * (counters[GetEventIndex(PAPI_L1_DCM)] / (double)counters[GetEventIndex(PAPI_L1_DCA)]);
             }
             case D_L2_DMR: {
-                return (counters[GetEventIndex(PAPI_L2_DCM)] / (double)counters[GetEventIndex(PAPI_L2_DCA)]);
+                return 100.0 * (counters[GetEventIndex(PAPI_L2_DCM)] / (double)counters[GetEventIndex(PAPI_L2_DCA)]);
             }
             case D_L3_DMR: {
-                return (counters[GetEventIndex(PAPI_L3_DCM)] / (double)counters[GetEventIndex(PAPI_L3_DCA)]);
+                return 100.0 * (counters[GetEventIndex(PAPI_L3_DCM)] / (double)counters[GetEventIndex(PAPI_L3_DCA)]);
             }
             case D_BR_MPR: {
                 if(EventAvailable(PAPI_BR_CN))
-                    return (counters[GetEventIndex(PAPI_BR_MSP)] / (double)counters[GetEventIndex(PAPI_BR_CN)]);
+                    return 100.0 * (counters[GetEventIndex(PAPI_BR_MSP)] / (double)counters[GetEventIndex(PAPI_BR_CN)]);
                 else
-                    return (counters[GetEventIndex(PAPI_BR_MSP)] / (double)(counters[GetEventIndex(PAPI_BR_MSP)] + counters[GetEventIndex(PAPI_BR_PRC)]));
+                    return 100.0 * (counters[GetEventIndex(PAPI_BR_MSP)] / (double)(counters[GetEventIndex(PAPI_BR_MSP)] + counters[GetEventIndex(PAPI_BR_PRC)]));
             }
         }
     }
