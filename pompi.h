@@ -206,22 +206,24 @@ namespace pompi
             /**
              * Prints results on standard output. Can be used to output counters
              * of any singular thread or all threads aggregated (implicit).
-             * @param total_threads Total number of threads used during execution.
+             * @param value         Any value selected by user (eg. total number of threads).
              * @param thread_id     ID of a thread to be outputted (invalid thread ID
              *                      results in aggregated output on all threads).
              */
-            void PrintResults(int total_threads, int thread_id = ALL_THREADS);
+            template < typename T >
+            void PrintResults(T value, int thread_id = ALL_THREADS);
 
             /**
              * Simillar to PrintResults. Takes additional file description 
              * parameters to define output file.
-             * @param total_threads Total number of threads used during execution.
+             * @param value         Any value selected by user (eg. total number of threads).
              * @param file_name     C string name of a output file.
              * @param format        Output format.
              * @param thread_id     ID of a thread to be outputted (invalid thread ID
              *                      results in aggregated output on all threads).
              */
-            void PrintResultsToFile(int total_threads, const char * file_name, OutputFormat format, int thread_id = ALL_THREADS);
+            template < typename T >
+            void PrintResultsToFile(T value, const char * file_name, OutputFormat format, int thread_id = ALL_THREADS);
 
         private:
 
@@ -261,7 +263,7 @@ namespace pompi
             std::string GetDerivedStatName(PapiDerivedStat stat);
 
             /**
-             * Private method that computes derived stat value.
+             * Private generic method that computes derived stat value.
              * @param  stat      Derived stat to be computed
              * @param  thread_id Derived stat will be computed for a thread with
              *                   this thread_id. In case thread_id is invalid,
@@ -271,14 +273,15 @@ namespace pompi
             double ComputeDerivedStat(PapiDerivedStat stat, int thread_id = ALL_THREADS);
 
             /**
-             * Private method defining print format for GNUPLOT
-             * @param total_threads Total number of threads used during execution
+             * Private generic method defining print format for GNUPLOT
+             * @param value         Any value selected by user (eg. total number of threads).
              * @param output        Output stream
              * @param thread_id     Output will be performed for thread with this ID.
              *                      In case thread_id is invalid, output will be
              *                      performed aggregated for all threads.
              */
-            void PrintGnuplot(int total_threads, std::ofstream &output, int thread_id = ALL_THREADS);
+            template < typename T >
+            void PrintGnuplot(T value, std::ofstream &output, int thread_id = ALL_THREADS);
     };
 
     
@@ -555,23 +558,24 @@ namespace pompi
         }
     }
 
-
-    void Base::PrintResults(int total_threads, int thread_id)
+    template < typename T >
+    void Base::PrintResults(T value, int thread_id)
     {
         std::vector< PapiDerivedStat > stats;
         GetDerivedStats(stats);
 
         if((thread_id >= 0)&&(thread_id <= max_threads_))
-            std::cout << "Results for thread #" << thread_id << " out of "
-                      << total_threads << " threads" << std::endl;
+            std::cout << "Results for thread #" << thread_id << std::endl;
         else
         {
-            std::cout << "Aggregated results on " << total_threads << " threads" << std::endl;
+            std::cout << "Aggregated results on all threads" << std::endl;
             thread_id = ALL_THREADS;
         }
 
         long long results[papi_events_.size()];
         GetCounters(results, thread_id);
+
+        std::cout << "Parameter value: " << value << std::endl;
 
         for(int event = 0; event < papi_events_.size(); ++event)
         {
@@ -589,9 +593,10 @@ namespace pompi
     }
 
 
-    void Base::PrintResultsToFile(int total_threads, const char * file_name, OutputFormat format, int thread_id)
+    template < typename T >
+    void Base::PrintResultsToFile(T value, const char * file_name, OutputFormat format, int thread_id)
     {
-        if((thread_id < 0)||(thread_id > total_threads))
+        if((thread_id < 0)||(thread_id > max_threads_))
             thread_id = ALL_THREADS;
 
         std::ofstream output;
@@ -601,7 +606,7 @@ namespace pompi
         switch(format)
         {
             case GNUPLOT: {
-                PrintGnuplot(total_threads, output, thread_id);
+                PrintGnuplot(value, output, thread_id);
                 break;
             }
         }
@@ -611,16 +616,17 @@ namespace pompi
 
 
     // Format specific print methods
-
-    void Base::PrintGnuplot(int total_threads, std::ofstream &output, int thread_id)
+    template < typename T >
+    void Base::PrintGnuplot(T value, std::ofstream &output, int thread_id)
     {
         std::vector< PapiDerivedStat > stats;
         GetDerivedStats(stats);
 
-        if(thread_id == ALL_THREADS)
-            output << std::setw(8) << "#THREADS";
-        else
-            output << std::setw(7) << "#THREAD";
+        output << '#';
+        if(thread_id != ALL_THREADS)
+            output << "THREAD";
+
+        output << std::setw(15) << "VALUE";
 
         for(int event = 0; event < papi_events_.size(); ++event)
             output << std::setw(16) << papi_event_names_[event];
@@ -631,10 +637,10 @@ namespace pompi
         long long results[papi_events_.size()];
         GetCounters(results, thread_id);
 
-        if(thread_id == ALL_THREADS)
-            output << std::setw(8) << total_threads;
-        else
+        if(thread_id != ALL_THREADS)
             output << std::setw(7) << thread_id;
+
+        output << std::setw(16) << value;
 
         for(int event = 0; event < papi_events_.size(); ++event)
             output << std::setw(16) << results[event];
