@@ -103,12 +103,12 @@ namespace pompi
             double execution_time_start_;
 
             /**
-             * Execution time stop variable.
-             * Stop time is updated with each call to Stop method.
+             * Execution time duration variable.
+             * Duration time is updated with each call to Stop method.
              * @see Stop()
              * @see ClearTimers()
              */
-            double execution_time_end_;
+            double execution_time_duration_;
 
             /**
              * Vector of papi event codes.
@@ -171,8 +171,8 @@ namespace pompi
             void Stop();
 
             /**
-             * Provides execution time between first call to Start() and
-             * last call to Stop(). This behaviour is reset by ClearTimers().
+             * Provides accumulated execution time betwwn all pairs of Start()
+             * and Stop() methods. This behaviour is reset by ClearTimers().
              * @return execution time
              * @see Start()
              * @see Stop()
@@ -358,17 +358,14 @@ namespace pompi
         }
 
         #pragma omp single
-        {
-            if(execution_time_start_ == 0)
-                execution_time_start_ = omp_get_wtime();
-        }
+        execution_time_start_ = omp_get_wtime();
     }
 
 
     void Base::Stop()
     {
         #pragma omp single
-        execution_time_end_ = omp_get_wtime();
+        execution_time_duration_ += omp_get_wtime() - execution_time_start_;
 
         long long counter_values[papi_events_.size()];
 
@@ -390,13 +387,13 @@ namespace pompi
 
     double Base::GetExecutionTime()
     {
-        return execution_time_end_ - execution_time_start_;
+        return execution_time_duration_;
     }
 
 
     double Base::GetAverageExecutionTime(int trials)
     {
-        return GetExecutionTime()/trials;
+        return execution_time_duration_ / trials;
     }
 
 
@@ -420,7 +417,7 @@ namespace pompi
     void Base::ClearTimers()
     {
         execution_time_start_ = 0;
-        execution_time_end_ = 0;
+        execution_time_duration_ = 0;
     }
 
     //////////////////////////////////////
