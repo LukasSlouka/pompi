@@ -221,7 +221,7 @@ namespace pompi
              * @param thread_id     ID of a thread to be outputted (invalid thread ID
              *                      results in aggregated output on all threads).
              */
-            void PrintResultsToFile(int total_threads, char * file_name, OutputFormat format, int thread_id = ALL_THREADS);
+            void PrintResultsToFile(int total_threads, const char * file_name, OutputFormat format, int thread_id = ALL_THREADS);
 
         private:
 
@@ -587,7 +587,7 @@ namespace pompi
     }
 
 
-    void Base::PrintResultsToFile(int total_threads, char * file_name, OutputFormat format, int thread_id)
+    void Base::PrintResultsToFile(int total_threads, const char * file_name, OutputFormat format, int thread_id)
     {
         if((thread_id < 0)||(thread_id > total_threads))
             thread_id = ALL_THREADS;
