@@ -183,7 +183,7 @@ namespace pompi
              * @see Stop()
              * @see ClearTimers()
              */
-            double GetExecutionTime();
+            double inline GetExecutionTime();
 
             /**
              * Similar to GetExecutionTime. Used to calculate execution time 
@@ -192,7 +192,7 @@ namespace pompi
              * @return        average execution time.
              * @see GetExecutionTime()
              */
-            double GetAverageExecutionTime(int trials);
+            double inline GetAverageExecutionTime(int trials);
 
             /**
              * Sets all counters to zero. Number of counter depends on
@@ -206,7 +206,7 @@ namespace pompi
             /**
              * Sets both execution time timers to zero.
              */
-            void ClearTimers();
+            void inline ClearTimers();
 
             /**
              * Prints results on standard output. Can be used to output counters
@@ -431,13 +431,13 @@ namespace pompi
     }
 
 
-    double Base::GetExecutionTime()
+    double inline Base::GetExecutionTime()
     {
         return execution_time_duration_;
     }
 
 
-    double Base::GetAverageExecutionTime(int trials)
+    double inline Base::GetAverageExecutionTime(int trials)
     {
         return execution_time_duration_ / trials;
     }
@@ -460,7 +460,7 @@ namespace pompi
 
 
     
-    void Base::ClearTimers()
+    void inline Base::ClearTimers()
     {
         execution_time_start_ = 0;
         execution_time_duration_ = 0;
