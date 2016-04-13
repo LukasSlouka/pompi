@@ -142,6 +142,11 @@ namespace pompi
              */
             int max_threads_;
 
+            /**
+             * Maximum number of events according to number of available hw counters
+             */
+            int max_events_;
+
         public:
 
             /**
@@ -316,6 +321,10 @@ namespace pompi
         }
         std::clog << "[Log] PAPI library successfully initialized" << std::endl;
 
+        max_events_ = PAPI_num_counters();
+        std::clog << "[Log] Maximum number of counters is " << max_events_ << std::endl;
+
+
         PAPI_return_value = PAPI_thread_init((unsigned long (*)(void)) (omp_get_thread_num));
         if(PAPI_return_value != PAPI_OK)
         {
@@ -338,6 +347,12 @@ namespace pompi
 
     void Base::AddEvent(char * event)
     {
+        if(papi_events_.size() > max_events_)
+        {
+            std::cerr << "[Warning] Cannot add any more events, skipping " << event << std::endl;
+            return;
+        }
+
         int event_id;
         int PAPI_return_value = PAPI_event_name_to_code(event, &event_id);
         if(PAPI_return_value != PAPI_OK)
@@ -346,11 +361,11 @@ namespace pompi
         {
             if(std::find(papi_events_.begin(), papi_events_.end(), event_id) == papi_events_.end())
             {
-              papi_event_names_.push_back(std::string(event));
-              papi_events_.push_back(event_id);
-              for(int i = 0; i < max_threads_; ++i)
-                thread_data_[i].push_back(0);
-              std::clog << "[Log] Adding papi event `" << event << "`" << std::endl;
+                papi_event_names_.push_back(std::string(event));
+                papi_events_.push_back(event_id);
+                for(int i = 0; i < max_threads_; ++i)
+                    thread_data_[i].push_back(0);
+                std::clog << "[Log] Adding papi event `" << event << "`" << std::endl;
             }
             else
                 std::cerr << "[Warning] Papi event `" << event << "` already listed, skipping" << std::endl;
