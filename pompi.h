@@ -80,6 +80,145 @@ namespace pompi
     };
 
     /**
+     * Pompi timer class
+     * Timer class that can be used by itself, but is part of wrapper
+     */
+    class PompiTimer
+    {
+        private:
+
+            /**
+             * First call to timer
+             */
+            double first_call_time_;
+
+            /**
+             * Last call to timer
+             */
+            double last_call_time_;
+
+            /**
+             * Inner timer call (does not change first call)
+             */
+            double inner_call_time_;
+
+            /**
+             * Inner calls aggregated duration
+             */
+            double inner_calls_sum_;
+
+            /**
+             * Inner calls count
+             */
+            unsigned int repetition_count_;
+
+
+        public:
+
+            /**
+             * A constructor
+             * Initializes all counters to zero
+             */
+            PompiTimer()
+            {
+                first_call_time_ = 0.0f;
+                last_call_time_ = 0.0f;
+                inner_call_time_ = 0.0f;
+                inner_calls_sum_ = 0.0f;
+                repetition_count_ = 0.0f;
+            }
+
+            /**
+             * Begins timing
+             * Sets first call if it is zero, otherwise sets inner call time
+             */
+            void BeginTiming()
+            {
+                inner_call_time_ = omp_get_wtime();
+                if(first_call_time_ == 0.0f)
+                    first_call_time_ = inner_call_time_;
+            }
+
+            /**
+             * Ends timing
+             */
+            int EndTiming()
+            {
+                last_call_time_ = omp_get_wtime();
+                repetition_count_++;
+                inner_calls_sum_ += last_call_time_ - inner_call_time_;
+            }
+
+            /**
+             * Clears entire timer
+             */
+            void inline ResetTimer()
+            {
+                first_call_time_ = 0.0f;
+                last_call_time_ = 0.0f;
+                inner_call_time_ = 0.0f;
+                inner_calls_sum_ = 0.0f;
+                repetition_count_ = 0.0f;
+            }
+
+            /**
+             * @return First timer call since latest reset
+             */
+            double inline GetFirstCallTime()
+            {
+                return first_call_time_;
+            }
+
+            /**
+             * @return Last timer call since latest reset
+             */
+            double inline GetLastCallTime()
+            {
+                return last_call_time_;
+            }
+
+            /**
+             * @return Number of calls since lates reset
+             */
+            double inline GetRepetitionCount()
+            {
+                return repetition_count_;
+            }
+
+            /**
+             * @return Sum of all calls since latest reset
+             */
+            double inline GetAggregatedTime()
+            {
+                return inner_calls_sum_;
+            }
+
+            /**
+             * @return Duration between first and last call since latest reset
+             */
+            double inline GetTotalTime()
+            {
+                return last_call_time_ - first_call_time_;
+            }
+
+            /**
+             * @return Average time over aggregated time
+             */
+            double inline GetAverageTimeOverAggregated()
+            {
+                return inner_calls_sum_/repetition_count_;
+            }
+
+            /**
+             * @return Average time over total time
+             */
+            double inline GetAverageTimeOverTotal()
+            {
+                return GetTotalTime()/repetition_count_;
+            }
+    };
+
+    /**
      * Pompi Base class.
      * This class is heart and soul of pompi wrapper. Contains all methods
      * and attributes needed for successful monitoring of performance.
@@ -90,25 +229,12 @@ namespace pompi
         private:
 
             /**
-             * Execution time start variable.
-             * Contains time of execution begining.
-             * @warning Note that it does not change value with each call to Start method. 
-             *          Its stays the same until it is cleared by ClearTimers method.
-             * This behaviour is due to use of repeating the same action multiple
-             * times in benchmarking, in which case its needed to accumulate execution time
-             * rather than save only the execution time of the last iteration.
-             * @see ClearTimers()
+             * Pompi timer
+             * Used for all time measurements
              * @see Start()
+             * @see End()
              */
-            double execution_time_start_;
-
-            /**
-             * Execution time duration variable.
-             * Duration time is updated with each call to Stop method.
-             * @see Stop()
-             * @see ClearTimers()
-             */
-            double execution_time_duration_;
+            PompiTimer timer_;
 
             /**
              * Vector of papi event codes.
@@ -193,11 +319,10 @@ namespace pompi
             /**
              * Similar to GetExecutionTime. Used to calculate execution time 
              * averaged on number of trials.
-             * @param  trials repetition count.
              * @return        average execution time.
              * @see GetExecutionTime()
              */
-            double inline GetAverageExecutionTime(int trials);
+            double inline GetAverageExecutionTime();
 
             /**
              * Sets all counters to zero. Number of counter depends on
@@ -311,7 +436,7 @@ namespace pompi
         for(int set = 0; set < event_sets_.size(); ++set)
             event_sets_[set] = PAPI_NULL;
 
-        ClearTimers();
+        timer_.ResetTimer();
 
         int PAPI_return_value = PAPI_library_init(PAPI_VER_CURRENT);
         if(PAPI_return_value != PAPI_VER_CURRENT)
@@ -395,8 +520,7 @@ namespace pompi
         #pragma omp barrier
 
         #pragma omp single
-        execution_time_start_ = omp_get_wtime();
-
+        timer_.BeginTiming();
 
         PAPI_return_value = PAPI_start(event_sets_[thread_id]);
         if(PAPI_return_value != PAPI_OK)
@@ -422,7 +546,7 @@ namespace pompi
         #pragma omp barrier
 
         #pragma omp single
-        execution_time_duration_ += omp_get_wtime() - execution_time_start_;
+        timer_.EndTiming();
 
 
         for(int event = 0; event < papi_events_.size(); ++event)
@@ -448,13 +572,13 @@ namespace pompi
 
     double inline Base::GetExecutionTime()
     {
-        return execution_time_duration_;
+        return timer_.GetAggregatedTime();
     }
 
 
-    double inline Base::GetAverageExecutionTime(int trials)
+    double inline Base::GetAverageExecutionTime()
     {
-        return execution_time_duration_ / trials;
+        return timer_.GetAverageTimeOverAggregated();
     }
 
 
@@ -477,8 +601,7 @@ namespace pompi
     
     void inline Base::ClearTimers()
     {
-        execution_time_start_ = 0;
-        execution_time_duration_ = 0;
+        timer_.ResetTimer();
     }
 
     //////////////////////////////////////
