@@ -53,6 +53,18 @@ namespace pompi
     /// Used in methods that support output on either only one thread or all threads.
     #define ALL_THREADS -1
 
+    // Arbitrary boundary for max events
+    #define MAX_EVENTS  20
+
+    int g_eventset = PAPI_NULL;
+    #pragma omp threadprivate(g_eventset)
+
+    long long g_start_counter_values[MAX_EVENTS];
+    #pragma omp threadprivate(g_start_counter_values)
+
+    long long g_end_counter_values[MAX_EVENTS];
+    #pragma omp threadprivate(g_start_counter_values)
+
     // Add new output formats here
     /**
      * Output formats enum.
@@ -243,11 +255,6 @@ namespace pompi
             std::vector< int > papi_events_;
 
             /**
-             * Vector of papi event sets for each thread
-             */
-            std::vector< int > event_sets_;
-
-            /**
              * Vector of papi event names.
              * Content corresponds with papi_events_.
              */
@@ -271,7 +278,8 @@ namespace pompi
             /**
              * Maximum number of events according to number of available hw counters
              */
-            int max_events_;
+            int hw_counters_;
+
 
         public:
 
@@ -280,9 +288,18 @@ namespace pompi
              * Initializes PAPI library and PAPI library threading
              * support for OpenMP. Parses PAPI_EVENTS enviroment variable
              * and modifies papi_events_ and papi_event_names_ accordingly.
-             * @warning Should be instantiated only once.
              */
             Base();
+
+            /**
+             * Base destructor
+             */
+            ~Base()
+            {
+                PAPI_shutdown();
+            }
+
+        public:
 
             /**
              * Tells pompi to monitor additional event.
@@ -432,10 +449,6 @@ namespace pompi
 
         thread_data_.resize(max_threads_);
         
-        event_sets_.resize(max_threads_);
-        for(int set = 0; set < event_sets_.size(); ++set)
-            event_sets_[set] = PAPI_NULL;
-
         timer_.ResetTimer();
 
         int PAPI_return_value = PAPI_library_init(PAPI_VER_CURRENT);
@@ -446,8 +459,11 @@ namespace pompi
         }
         std::clog << "[Log] PAPI library successfully initialized" << std::endl;
 
-        max_events_ = PAPI_num_counters();
-        std::clog << "[Log] Maximum number of counters is " << max_events_ << std::endl;
+        hw_counters_ = PAPI_num_counters();
+        if(hw_counters_ > MAX_EVENTS)
+            hw_counters_ = MAX_EVENTS;
+
+        std::clog << "[Log] Maximum number of events is " << hw_counters_ << std::endl;
 
 
         PAPI_return_value = PAPI_thread_init((unsigned long (*)(void)) (omp_get_thread_num));
@@ -472,7 +488,7 @@ namespace pompi
 
     void Base::AddEvent(char * event)
     {
-        if(papi_events_.size() > max_events_)
+        if(papi_events_.size() > hw_counters_)
         {
             std::cerr << "[Warning] Cannot add any more events, skipping " << event << std::endl;
             return;
@@ -500,73 +516,85 @@ namespace pompi
 
     void Base::Start()
     {
-        PAPI_register_thread();
-        int thread_id = PAPI_thread_id();
-
-        int PAPI_return_value = PAPI_create_eventset(&event_sets_[thread_id]);
-        if(PAPI_return_value != PAPI_OK)
-        {
-            #pragma omp critical
-            std::cerr << "[Error] Failed to initialize PAPI event set for thread #" << thread_id << std::endl;
-        }
-
-        PAPI_return_value = PAPI_add_events(event_sets_[thread_id], &papi_events_[0], papi_events_.size());
-        if(PAPI_return_value != PAPI_OK)
-        {
-            #pragma omp critical
-            std::cerr << "[Error] Failed to add events to event set for thread #" << thread_id << std::endl;
-        }
-
-        #pragma omp barrier
-
-        #pragma omp single
         timer_.BeginTiming();
 
-        PAPI_return_value = PAPI_start(event_sets_[thread_id]);
-        if(PAPI_return_value != PAPI_OK)
+        #pragma omp parallel
         {
-            #pragma omp critical
-            std::cerr << "[Error] Failed to start counting in thread #" << thread_id << std::endl;
+            PAPI_register_thread();
+            int thread_id = PAPI_thread_id();
+
+            int PAPI_return_value = PAPI_create_eventset(&g_eventset);
+            if(PAPI_return_value != PAPI_OK)
+            {
+                #pragma omp critical
+                std::cerr << "[Error] Failed to initialize PAPI event set for thread #" << thread_id << std::endl;
+            }
+
+            PAPI_return_value = PAPI_add_events(g_eventset, &papi_events_[0], papi_events_.size());
+            if(PAPI_return_value != PAPI_OK)
+            {
+                #pragma omp critical
+                std::cerr << "[Error] Failed to add events to event set for thread #" << thread_id << std::endl;
+            }
+
+            PAPI_return_value = PAPI_start(g_eventset);
+            if(PAPI_return_value != PAPI_OK)
+            {
+                #pragma omp critical
+                std::cerr << "[Error] Failed to start counting in thread #" << thread_id << std::endl;
+            }
+
+            PAPI_return_value = PAPI_read(g_eventset, g_start_counter_values);
+            if(PAPI_return_value != PAPI_OK)
+            {
+                #pragma omp critical
+                std::cerr << "[Error] Failed to read counters in thread #" << thread_id << std::endl;
+            }
         }
     }
 
 
     void Base::Stop()
     {
-        long long counter_values[papi_events_.size()];
-        int thread_id = PAPI_thread_id();
-
-        int PAPI_return_value = PAPI_stop(event_sets_[thread_id], counter_values);
-        if(PAPI_return_value != PAPI_OK)
+        #pragma omp parallel
         {
-            #pragma omp critical
-            std::cerr << "[Error] Failed to stop counting in thread #" << thread_id << std::endl;
+            int thread_id = PAPI_thread_id();
+
+            int PAPI_return_value = PAPI_read(g_eventset, g_end_counter_values);
+            if(PAPI_return_value != PAPI_OK)
+            {
+                #pragma omp critical
+                std::cerr << "[Error] Failed to read counters in thread #" << thread_id << std::endl;
+            }
+
+            for(int event = 0; event < papi_events_.size(); ++event)
+                thread_data_[thread_id][event] += g_end_counter_values[event];
+
+            PAPI_return_value = PAPI_stop(g_eventset, NULL);
+            if(PAPI_return_value != PAPI_OK)
+            {
+                #pragma omp critical
+                std::cerr << "[Error] Failed to stop counting in thread #" << thread_id << std::endl;
+            }            
+
+            PAPI_return_value = PAPI_cleanup_eventset(g_eventset);
+            if(PAPI_return_value != PAPI_OK)
+            {
+                #pragma omp critical
+                std::cerr << "[Error] Failed to clean up event set in thread #" << thread_id << std::endl;
+            }
+
+            PAPI_return_value = PAPI_destroy_eventset(&g_eventset);
+            if(PAPI_return_value != PAPI_OK)
+            {
+                #pragma omp critical
+                std::cerr << "[Error] Failed to destroy event set in thread #" << thread_id << std::endl;
+            }
+
+            PAPI_unregister_thread();
         }
 
-        #pragma omp barrier
-
-        #pragma omp single
         timer_.EndTiming();
-
-
-        for(int event = 0; event < papi_events_.size(); ++event)
-            thread_data_[thread_id][event] += counter_values[event];
-
-        PAPI_return_value = PAPI_cleanup_eventset(event_sets_[thread_id]);
-        if(PAPI_return_value != PAPI_OK)
-        {
-            #pragma omp critical
-            std::cerr << "[Error] Failed to clean up event set in thread #" << thread_id << std::endl;
-        }
-
-        PAPI_return_value = PAPI_destroy_eventset(&event_sets_[thread_id]);
-        if(PAPI_return_value != PAPI_OK)
-        {
-            #pragma omp critical
-            std::cerr << "[Error] Failed to destroy event set in thread #" << thread_id << std::endl;
-        }
-
-        PAPI_unregister_thread();
     }
 
 
@@ -596,7 +624,6 @@ namespace pompi
                 thread_data_[thread_id][event] = 0;                     
         }
     }
-
 
     
     void inline Base::ClearTimers()
