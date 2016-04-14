@@ -88,7 +88,15 @@ namespace pompi
         D_L1_DMR,   /**< Derived L1 cache data missrate [%]*/
         D_L2_DMR,   /**< Derived L2 cache data missrate [%]*/
         D_L3_DMR,   /**< Derived L3 cache data missrate [%]*/
+        
+        D_GIPC,     /**< Derived graduated instructions per second*/
+        D_IIPC,     /**< Derived issued instructions per second*/ 
+
         D_BR_MPR,   /**< Derived branch missprediction rate [%]*/
+        D_MFLOPS,   /**< Derived MFLOPS*/
+        D_GFLOPS,   /**< Derived GFLOPS*/
+        D_MIPS,     /**< Derived MIPS*/
+        D_GIPS,     /**< Derived GIPS*/
     };
 
     /**
@@ -697,6 +705,24 @@ namespace pompi
         if (( EventAvailable(PAPI_BR_MSP) && EventAvailable(PAPI_BR_CN) )||
             ( EventAvailable(PAPI_BR_MSP) && EventAvailable(PAPI_BR_PRC) ))
             stats.push_back(D_BR_MPR);
+
+        if (EventAvailable(PAPI_TOT_INS) && EventAvailable(PAPI_TOT_CYC))
+            stats.push_back(D_GIPC);
+
+        if (EventAvailable(PAPI_TOT_IIS) && EventAvailable(PAPI_TOT_CYC))
+            stats.push_back(D_IIPC);
+
+        if (EventAvailable(PAPI_FP_INS))
+        {
+            stats.push_back(D_MFLOPS);
+            stats.push_back(D_GFLOPS);
+        }
+
+        if (EventAvailable(PAPI_TOT_INS))
+        {
+            stats.push_back(D_MIPS);
+            stats.push_back(D_GIPS);
+        }
     }
 
 
@@ -732,6 +758,24 @@ namespace pompi
                 else
                     return 100.0 * (counters[GetEventIndex(PAPI_BR_MSP)] / (double)(counters[GetEventIndex(PAPI_BR_MSP)] + counters[GetEventIndex(PAPI_BR_PRC)]));
             }
+            case D_GIPC: {
+                return (counters[GetEventIndex(PAPI_TOT_INS)] / (double)counters[GetEventIndex(PAPI_TOT_CYC)]);
+            }
+            case D_IIPC: {
+                return (counters[GetEventIndex(PAPI_TOT_IIS)] / (double)counters[GetEventIndex(PAPI_TOT_CYC)]);
+            }
+            case D_MFLOPS: {
+                return (counters[GetEventIndex(PAPI_FP_INS)] / timer_.GetAggregatedTime()) / 1e6;
+            }
+            case D_GFLOPS: {
+                return (counters[GetEventIndex(PAPI_FP_INS)] / timer_.GetAggregatedTime()) / 1e9;
+            }
+            case D_MIPS: {
+                return (counters[GetEventIndex(PAPI_TOT_INS)] / timer_.GetAggregatedTime()) / 1e6;
+            }
+            case D_GIPS: {
+                return (counters[GetEventIndex(PAPI_TOT_INS)] / timer_.GetAggregatedTime()) / 1e9;
+            }
         }
     }
 
@@ -760,6 +804,24 @@ namespace pompi
             }
             case D_BR_MPR: {
                 return "D_BR_MPR";
+            }
+            case D_GIPC: {
+                return "D_GIPC";
+            }
+            case D_IIPC: {
+                return "D_IIPC";
+            }
+            case D_MFLOPS: {
+                return "D_MFLOPS";
+            }
+            case D_GFLOPS: {
+                return "D_GFLOPS";
+            }
+            case D_MIPS: {
+                return "D_MIPS";
+            }
+            case D_GIPS: {
+                return "D_GIPS";
             }
         }
     }
