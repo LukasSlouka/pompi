@@ -36,15 +36,15 @@
 #pragma once
 
 #include <papi.h>
-#include <omp.h>
 #include <vector>
 #include <string>
-#include <iostream>
 #include <stdio.h>
 #include <cstring>
 #include <algorithm>
-#include <iomanip>
-#include <fstream>
+
+#ifdef _OPENMP
+  #include <omp.h>
+#endif
 
 /// pompi namespace.
 namespace pompi
@@ -57,13 +57,19 @@ namespace pompi
     #define MAX_EVENTS  20
 
     int g_eventset = PAPI_NULL;
+#ifdef _OPENMP
     #pragma omp threadprivate(g_eventset)
+#endif
 
     long long g_start_counter_values[MAX_EVENTS];
+#ifdef _OPENMP
     #pragma omp threadprivate(g_start_counter_values)
+#endif
 
     long long g_end_counter_values[MAX_EVENTS];
+#ifdef _OPENMP
     #pragma omp threadprivate(g_start_counter_values)
+#endif
 
     // Add new output formats here
     /**
@@ -88,9 +94,9 @@ namespace pompi
         D_L1_DMR,   /**< Derived L1 cache data missrate [%]*/
         D_L2_DMR,   /**< Derived L2 cache data missrate [%]*/
         D_L3_DMR,   /**< Derived L3 cache data missrate [%]*/
-        
+
         D_GIPC,     /**< Derived graduated instructions per second*/
-        D_IIPC,     /**< Derived issued instructions per second*/ 
+        D_IIPC,     /**< Derived issued instructions per second*/
 
         D_BR_MPR,   /**< Derived branch missprediction rate [%]*/
         D_MFLOPS,   /**< Derived MFLOPS*/
@@ -111,21 +117,25 @@ namespace pompi
              * First call to timer
              */
             double first_call_time_;
+            long long first_call_time_usec_;
 
             /**
              * Last call to timer
              */
             double last_call_time_;
+            long long last_call_time_usec_;
 
             /**
              * Inner timer call (does not change first call)
              */
             double inner_call_time_;
+            long long inner_call_time_usec_;
 
             /**
              * Inner calls aggregated duration
              */
             double inner_calls_sum_;
+            long long inner_calls_sum_usec_;
 
             /**
              * Inner calls count
@@ -142,10 +152,14 @@ namespace pompi
             PompiTimer()
             {
                 first_call_time_ = 0.0f;
+                first_call_time_usec_ = 0;
                 last_call_time_ = 0.0f;
+                last_call_time_usec_ = 0;
                 inner_call_time_ = 0.0f;
+                inner_call_time_usec_ = 0;
                 inner_calls_sum_ = 0.0f;
-                repetition_count_ = 0.0f;
+                inner_calls_sum_usec_ = 0;
+                repetition_count_ = 0;
             }
 
             /**
@@ -154,53 +168,82 @@ namespace pompi
              */
             void BeginTiming()
             {
+#ifdef _OPENMP
                 inner_call_time_ = omp_get_wtime();
                 if(first_call_time_ == 0.0f)
                     first_call_time_ = inner_call_time_;
+#endif
+                inner_call_time_usec_ = PAPI_get_real_usec();
+                if(first_call_time_usec_ == 0)
+                    first_call_time_usec_ = inner_call_time_usec_;
             }
 
             /**
              * Ends timing
              */
-            int EndTiming()
+            void EndTiming()
             {
+#ifdef _OPENMP
                 last_call_time_ = omp_get_wtime();
-                repetition_count_++;
                 inner_calls_sum_ += last_call_time_ - inner_call_time_;
+#endif
+                last_call_time_usec_ = PAPI_get_real_usec();
+                inner_calls_sum_usec_ += last_call_time_usec_ - inner_call_time_usec_;
+                repetition_count_++;
             }
 
             /**
              * Clears entire timer
              */
-            void inline ResetTimer()
+            void ResetTimer()
             {
                 first_call_time_ = 0.0f;
+                first_call_time_usec_ = 0;
                 last_call_time_ = 0.0f;
+                last_call_time_usec_ = 0;
                 inner_call_time_ = 0.0f;
+                inner_call_time_usec_ = 0;
                 inner_calls_sum_ = 0.0f;
-                repetition_count_ = 0.0f;
+                inner_calls_sum_usec_ = 0;
+                repetition_count_ = 0;
             }
 
             /**
              * @return First timer call since latest reset
              */
-            double inline GetFirstCallTime()
+            double GetFirstCallTime()
             {
+#ifndef _OPENMP
+                return first_call_time_usec_ / 1e6;
+#endif
                 return first_call_time_;
+            }
+
+            long long GetFirstCallTimeUsec()
+            {
+                return first_call_time_usec_;
             }
 
             /**
              * @return Last timer call since latest reset
              */
-            double inline GetLastCallTime()
+            double GetLastCallTime()
             {
+#ifndef _OPENMP
+                return last_call_time_usec_ / 1e6;
+#endif
                 return last_call_time_;
+            }
+
+            long long GetLastCallTimeUsec()
+            {
+                return last_call_time_usec_;
             }
 
             /**
              * @return Number of calls since lates reset
              */
-            double inline GetRepetitionCount()
+            double GetRepetitionCount()
             {
                 return repetition_count_;
             }
@@ -208,33 +251,65 @@ namespace pompi
             /**
              * @return Sum of all calls since latest reset
              */
-            double inline GetAggregatedTime()
+            double GetAggregatedTime()
             {
+#ifndef _OPENMP
+                return inner_calls_sum_usec_ / 1e6;
+#endif
                 return inner_calls_sum_;
+            }
+
+            long long GetAggregatedTimeUsec()
+            {
+                return inner_calls_sum_usec_;
             }
 
             /**
              * @return Duration between first and last call since latest reset
              */
-            double inline GetTotalTime()
+            double GetTotalTime()
             {
+#ifndef _OPENMP
+                return GetTotalTimeUsec() / 1e6;
+#endif
                 return last_call_time_ - first_call_time_;
+            }
+
+            long long GetTotalTimeUsec()
+            {
+                return last_call_time_usec_ - first_call_time_usec_;
             }
 
             /**
              * @return Average time over aggregated time
              */
-            double inline GetAverageTimeOverAggregated()
+            double GetAverageTimeOverAggregated()
             {
+#ifndef _OPENMP
+                return GetAverageTimeOverAggregatedUsec() / 1e6;
+#endif
                 return inner_calls_sum_/repetition_count_;
+            }
+
+            double GetAverageTimeOverAggregatedUsec()
+            {
+                return inner_calls_sum_usec_/repetition_count_;
             }
 
             /**
              * @return Average time over total time
              */
-            double inline GetAverageTimeOverTotal()
+            double GetAverageTimeOverTotal()
             {
+#ifndef _OPENMP
+                return GetTotalTimeUsec() / 1e6;
+#endif
                 return GetTotalTime()/repetition_count_;
+            }
+
+            double GetAverageTimeOverTotalUsec()
+            {
+                return GetTotalTimeUsec()/repetition_count_;
             }
     };
 
@@ -339,15 +414,15 @@ namespace pompi
              * @see Stop()
              * @see ClearTimers()
              */
-            double inline GetExecutionTime();
+            double GetExecutionTime();
 
             /**
-             * Similar to GetExecutionTime. Used to calculate execution time 
+             * Similar to GetExecutionTime. Used to calculate execution time
              * averaged on number of trials.
              * @return        average execution time.
              * @see GetExecutionTime()
              */
-            double inline GetAverageExecutionTime();
+            double GetAverageExecutionTime();
 
             /**
              * Sets all counters to zero. Number of counter depends on
@@ -361,7 +436,7 @@ namespace pompi
             /**
              * Sets both execution time timers to zero.
              */
-            void inline ClearTimers();
+            void ClearTimers();
 
             /**
              * Prints results on standard output. Can be used to output counters
@@ -374,7 +449,7 @@ namespace pompi
             void PrintResults(T value, int thread_id = ALL_THREADS);
 
             /**
-             * Simillar to PrintResults. Takes additional file description 
+             * Simillar to PrintResults. Takes additional file description
              * parameters to define output file.
              * @param value         Any value selected by user (eg. total number of threads).
              * @param file_name     C string name of a output file.
@@ -441,47 +516,52 @@ namespace pompi
              *                      performed aggregated for all threads.
              */
             template < typename T >
-            void PrintGnuplot(T value, std::ofstream &output, int thread_id = ALL_THREADS);
+            void PrintGnuplot(T value, FILE * output, int thread_id = ALL_THREADS);
     };
 
-    
+
     /////////////////////////////////////
     //  Implementation PUBLIC METHODS  //
     /////////////////////////////////////
 
-    
+
     Base::Base()
     {
-        max_threads_ = omp_get_max_threads();
-        std::clog << "[Log] Maximum number of threads is " << max_threads_ << std::endl;
 
+#ifdef _OPENMP
+        max_threads_ = omp_get_max_threads();
+        printf("[Log] OpenMP has been found, Maximum number of threads is %d\n", max_threads_);
+#else
+        max_threads_ = 1;
+        printf("[Log] OpenMP not found, POMPI will be operating in single thread mode\n");
+#endif
         thread_data_.resize(max_threads_);
-        
+
         timer_.ResetTimer();
 
         int PAPI_return_value = PAPI_library_init(PAPI_VER_CURRENT);
         if(PAPI_return_value != PAPI_VER_CURRENT)
         {
-            std::cerr << "[Error] Could not initialize PAPI library" << std::endl;
+            fprintf(stderr, "[Error] Could not initialize PAPI library\n");
             exit(1);
         }
-        std::clog << "[Log] PAPI library successfully initialized" << std::endl;
+        printf("[Log] PAPI library successfully initialized\n");
 
         hw_counters_ = PAPI_num_counters();
         if(hw_counters_ > MAX_EVENTS)
             hw_counters_ = MAX_EVENTS;
 
-        std::clog << "[Log] Maximum number of events is " << hw_counters_ << std::endl;
+        printf("[Log] Maximum number of events is %d\n", hw_counters_);
 
-
+#ifdef _OPENMP
         PAPI_return_value = PAPI_thread_init((unsigned long (*)(void)) (omp_get_thread_num));
         if(PAPI_return_value != PAPI_OK)
         {
-            std::cerr << "[Error] Coult not initialize OpenMP threading for PAPI" << std::endl;
+            fprintf(stderr, "[Error] Coult not initialize OpenMP threading for PAPI\n");
             exit(1);
         }
-        std::clog << "[Log] OpenMP threading for PAPI successfully initialized" << std::endl;
-
+        printf("[Log] OpenMP threading for PAPI successfully initialized\n");
+#endif
         // Resolving PAPI events from PAPI_EVENTS enviroment variable
         char * papi_events = getenv("PAPI_EVENTS");
         char * event = strtok(papi_events, "|");
@@ -498,14 +578,14 @@ namespace pompi
     {
         if(papi_events_.size() > hw_counters_)
         {
-            std::cerr << "[Warning] Cannot add any more events, skipping " << event << std::endl;
+            fprintf(stderr, "[Warning] Cannot add any more events, skipping %s\n", event);
             return;
         }
 
         int event_id;
         int PAPI_return_value = PAPI_event_name_to_code(event, &event_id);
         if(PAPI_return_value != PAPI_OK)
-            std::cerr << "[Warning] Papi event `" << event << "` does not exists, skipping" << std::endl;
+            fprintf(stderr, "[Warning] Papi event `%s` does not exists, skipping\n", event);
         else
         {
             if(std::find(papi_events_.begin(), papi_events_.end(), event_id) == papi_events_.end())
@@ -514,10 +594,10 @@ namespace pompi
                 papi_events_.push_back(event_id);
                 for(int i = 0; i < max_threads_; ++i)
                     thread_data_[i].push_back(0);
-                std::clog << "[Log] Adding papi event `" << event << "`" << std::endl;
+                printf("[Log] Adding papi event `%s`\n", event);
             }
             else
-                std::cerr << "[Warning] Papi event `" << event << "` already listed, skipping" << std::endl;
+                fprintf(stderr, "[Warning] Papi event `%s` already listed, skipping\n", event);
         }
     }
 
@@ -526,6 +606,7 @@ namespace pompi
     {
         timer_.BeginTiming();
 
+#ifdef _OPENMP
         #pragma omp parallel
         {
             PAPI_register_thread();
@@ -535,35 +616,53 @@ namespace pompi
             if(PAPI_return_value != PAPI_OK)
             {
                 #pragma omp critical
-                std::cerr << "[Error] Failed to initialize PAPI event set for thread #" << thread_id << std::endl;
+                fprintf(stderr, "[Error] Failed to initialize PAPI event set for thread #%d\n", thread_id);
             }
 
             PAPI_return_value = PAPI_add_events(g_eventset, &papi_events_[0], papi_events_.size());
             if(PAPI_return_value != PAPI_OK)
             {
                 #pragma omp critical
-                std::cerr << "[Error] Failed to add events to event set for thread #" << thread_id << std::endl;
+                fprintf(stderr, "[Error] Failed to add events to event set for thread #%d\n", thread_id);
             }
 
             PAPI_return_value = PAPI_start(g_eventset);
             if(PAPI_return_value != PAPI_OK)
             {
                 #pragma omp critical
-                std::cerr << "[Error] Failed to start counting in thread #" << thread_id << std::endl;
+                fprintf(stderr, "[Error] Failed to start counting in thread #%d\n", thread_id);
             }
 
             PAPI_return_value = PAPI_read(g_eventset, g_start_counter_values);
             if(PAPI_return_value != PAPI_OK)
             {
                 #pragma omp critical
-                std::cerr << "[Error] Failed to read counters in thread #" << thread_id << std::endl;
+                fprintf(stderr, "[Error] Failed to read counters in thread #%d\n", thread_id);
             }
         }
+#else
+        int PAPI_return_value = PAPI_create_eventset(&g_eventset);
+        if(PAPI_return_value != PAPI_OK)
+            fprintf(stderr, "[Error] Failed to initialize PAPI event set\n");
+
+        PAPI_return_value = PAPI_add_events(g_eventset, &papi_events_[0], papi_events_.size());
+        if(PAPI_return_value != PAPI_OK)
+            fprintf(stderr, "[Error] Failed to add events to event set\n");
+
+        PAPI_return_value = PAPI_start(g_eventset);
+        if(PAPI_return_value != PAPI_OK)
+            fprintf(stderr, "[Error] Failed to start counting\n");
+
+        PAPI_return_value = PAPI_read(g_eventset, g_start_counter_values);
+        if(PAPI_return_value != PAPI_OK)
+            fprintf(stderr, "[Error] Failed to read counters\n");
+#endif
     }
 
 
     void Base::Stop()
     {
+#ifdef _OPENMP
         #pragma omp parallel
         {
             int thread_id = PAPI_thread_id();
@@ -572,7 +671,7 @@ namespace pompi
             if(PAPI_return_value != PAPI_OK)
             {
                 #pragma omp critical
-                std::cerr << "[Error] Failed to read counters in thread #" << thread_id << std::endl;
+                fprintf(stderr, "[Error] Failed to read counters in thread #%d\n", thread_id);
             }
 
             for(int event = 0; event < papi_events_.size(); ++event)
@@ -582,37 +681,56 @@ namespace pompi
             if(PAPI_return_value != PAPI_OK)
             {
                 #pragma omp critical
-                std::cerr << "[Error] Failed to stop counting in thread #" << thread_id << std::endl;
-            }            
+                fprintf(stderr, "[Error] Failed to stop counting in thread #%d\n", thread_id);
+            }
 
             PAPI_return_value = PAPI_cleanup_eventset(g_eventset);
             if(PAPI_return_value != PAPI_OK)
             {
                 #pragma omp critical
-                std::cerr << "[Error] Failed to clean up event set in thread #" << thread_id << std::endl;
+                fprintf(stderr, "[Error] Failed to clean up event set in thread #%d\n", thread_id);
             }
 
             PAPI_return_value = PAPI_destroy_eventset(&g_eventset);
             if(PAPI_return_value != PAPI_OK)
             {
                 #pragma omp critical
-                std::cerr << "[Error] Failed to destroy event set in thread #" << thread_id << std::endl;
+                fprintf(stderr, "[Error] Failed to destroy event set in thread #%d\n", thread_id);
             }
 
             PAPI_unregister_thread();
         }
+#else
+        int PAPI_return_value = PAPI_read(g_eventset, g_end_counter_values);
+        if(PAPI_return_value != PAPI_OK)
+            fprintf(stderr, "[Error] Failed to read counters\n");
 
+        for(int event = 0; event < papi_events_.size(); ++event)
+            thread_data_[0][event] += g_end_counter_values[event];
+
+        PAPI_return_value = PAPI_stop(g_eventset, NULL);
+        if(PAPI_return_value != PAPI_OK)
+            fprintf(stderr, "[Error] Failed to stop counting\n");
+
+        PAPI_return_value = PAPI_cleanup_eventset(g_eventset);
+        if(PAPI_return_value != PAPI_OK)
+            fprintf(stderr, "[Error] Failed to clean up event set\n");
+
+        PAPI_return_value = PAPI_destroy_eventset(&g_eventset);
+        if(PAPI_return_value != PAPI_OK)
+            fprintf(stderr, "[Error] Failed to destroy event set\n");
+#endif
         timer_.EndTiming();
     }
 
 
-    double inline Base::GetExecutionTime()
+    double Base::GetExecutionTime()
     {
         return timer_.GetAggregatedTime();
     }
 
 
-    double inline Base::GetAverageExecutionTime()
+    double Base::GetAverageExecutionTime()
     {
         return timer_.GetAverageTimeOverAggregated();
     }
@@ -624,17 +742,17 @@ namespace pompi
         {
             for(int thread = 0; thread < max_threads_; ++thread)
             for(int event = 0; event < papi_events_.size(); ++event)
-                thread_data_[thread][event] = 0;   
+                thread_data_[thread][event] = 0;
         }
         else
         {
             for(int event = 0; event < papi_events_.size(); ++event)
-                thread_data_[thread_id][event] = 0;                     
+                thread_data_[thread_id][event] = 0;
         }
     }
 
-    
-    void inline Base::ClearTimers()
+
+    void  Base::ClearTimers()
     {
         timer_.ResetTimer();
     }
@@ -643,7 +761,7 @@ namespace pompi
     //  Implementation PRIVATE methods  //
     //////////////////////////////////////
 
-    
+
     void Base::GetCounters(long long * counters, int thread_id)
     {
         for(int event = 0; event < papi_events_.size(); ++event)
@@ -660,7 +778,7 @@ namespace pompi
             for(int event = 0; event < papi_events_.size(); ++event)
                 counters[event] = thread_data_[thread_id][event];
         }
-        
+
     }
 
 
@@ -686,10 +804,10 @@ namespace pompi
     {
         if (EventAvailable(PAPI_LD_INS) && EventAvailable(PAPI_SR_INS) && EventAvailable(PAPI_L1_TCM))
             stats.push_back(D_L1_TMR);
-        
+
         if (EventAvailable(PAPI_L2_TCA) && EventAvailable(PAPI_L2_TCM))
             stats.push_back(D_L2_TMR);
-        
+
         if (EventAvailable(PAPI_L3_TCA) && EventAvailable(PAPI_L3_TCM))
             stats.push_back(D_L3_TMR);
 
@@ -833,31 +951,24 @@ namespace pompi
         GetDerivedStats(stats);
 
         if((thread_id >= 0)&&(thread_id <= max_threads_))
-            std::cout << "Results for thread #" << thread_id << std::endl;
+            printf("Results for thread #%d\n", thread_id);
         else
         {
-            std::cout << "Aggregated results on all threads" << std::endl;
+            printf("Aggregated results on all threads\n");
             thread_id = ALL_THREADS;
         }
+
+        double t_value = static_cast<double>(value);
+        printf("Parameter value: %f\n", t_value);
 
         long long results[papi_events_.size()];
         GetCounters(results, thread_id);
 
-        std::cout << "Parameter value: " << value << std::endl;
-
         for(int event = 0; event < papi_events_.size(); ++event)
-        {
-            std::cout << papi_event_names_[event] + ':'
-                      << std::setw(20) << results[event]
-                      << std::endl;
-        }
+            printf("%-15s:%20d\n", papi_event_names_[event].c_str(), results[event]);
 
         for(int d_event = 0; d_event < stats.size(); ++d_event)
-        {
-            std::cout << GetDerivedStatName(stats[d_event]) + ':'
-                      << std::setw(20) << ComputeDerivedStat(stats[d_event], thread_id)
-                      << std::endl;
-        }
+            printf("%-15s:%20f\n", GetDerivedStatName(stats[d_event]).c_str(), ComputeDerivedStat(stats[d_event], thread_id));
     }
 
 
@@ -867,8 +978,8 @@ namespace pompi
         if((thread_id < 0)||(thread_id > max_threads_))
             thread_id = ALL_THREADS;
 
-        std::ofstream output;
-        output.open(file_name, std::ofstream::app);
+        FILE * output;
+        output = fopen(file_name, "a");
 
         // Add new output format methods here
         switch(format)
@@ -879,41 +990,42 @@ namespace pompi
             }
         }
 
-        output.close();
+        fclose(output);
     }
 
 
     // Format specific print methods
     template < typename T >
-    void Base::PrintGnuplot(T value, std::ofstream &output, int thread_id)
+    void Base::PrintGnuplot(T value, FILE * output, int thread_id)
     {
         std::vector< PapiDerivedStat > stats;
         GetDerivedStats(stats);
 
-        output << '#';
+        fprintf(output, "#");
         if(thread_id != ALL_THREADS)
-            output << "THREAD";
+            fprintf(output, "THREAD");
 
-        output << std::setw(15) << "VALUE";
+        fprintf(output, "%15s", "VALUE");
 
         for(int event = 0; event < papi_events_.size(); ++event)
-            output << std::setw(16) << papi_event_names_[event];
+            fprintf(output, "%20s", papi_event_names_[event].c_str());
         for(int d_event = 0; d_event < stats.size(); ++d_event)
-            output << std::setw(16) << GetDerivedStatName(stats[d_event]);
-        output << std::endl;
+            fprintf(output, "%20s", GetDerivedStatName(stats[d_event]).c_str());
+        fprintf(output, "\n");
 
         long long results[papi_events_.size()];
         GetCounters(results, thread_id);
 
         if(thread_id != ALL_THREADS)
-            output << std::setw(7) << thread_id;
+            fprintf(output, "%-7d", thread_id);
 
-        output << std::setw(16) << value;
+        double t_value = static_cast<double>(value);
+        fprintf(output, "%16f", t_value);
 
         for(int event = 0; event < papi_events_.size(); ++event)
-            output << std::setw(16) << results[event];
+            fprintf(output, "%20d", results[event]);
         for(int d_event = 0; d_event < stats.size(); ++d_event)
-            output << std::setw(16) << ComputeDerivedStat(stats[d_event], thread_id);
-        output << std::endl;
+            fprintf(output, "%20f", ComputeDerivedStat(stats[d_event], thread_id));
+        fprintf(output, "\n");
     }
 }
