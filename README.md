@@ -1,6 +1,9 @@
 POMPI - PAPI for OpenMP
 =======================
 
+> **_POMPI is currently being reworked. Using it the way described below will cause bad results!_**
+
+
 POMPI provides all necessary tools for successful monitoring of OpenMP multithreaded applications using Performance Application Programmable Interface (PAPI) in C++ code. Motivation for creation of this rather simple header file was the need for a working PAPI wrapper in multithreaded enviroment, that would be easy to use, well documented and open source.
 
 Requirements
