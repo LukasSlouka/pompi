@@ -94,15 +94,15 @@ namespace pompi
         D_L1_DMR,   /**< Derived L1 cache data missrate [%]*/
         D_L2_DMR,   /**< Derived L2 cache data missrate [%]*/
         D_L3_DMR,   /**< Derived L3 cache data missrate [%]*/
-
         D_GIPC,     /**< Derived graduated instructions per second*/
         D_IIPC,     /**< Derived issued instructions per second*/
-
         D_BR_MPR,   /**< Derived branch missprediction rate [%]*/
         D_MFLOPS,   /**< Derived MFLOPS*/
         D_GFLOPS,   /**< Derived GFLOPS*/
         D_MIPS,     /**< Derived MIPS*/
         D_GIPS,     /**< Derived GIPS*/
+        D_TLBM_PC,  /**< Derived TLB data misses per count */
+        D_TLBM_PS,  /**< Derived TLB data misses per second */
     };
 
     /**
@@ -140,7 +140,7 @@ namespace pompi
             /**
              * Inner calls count
              */
-            unsigned int repetition_count_;
+            unsigned long int repetition_count_;
 
 
         public:
@@ -248,6 +248,11 @@ namespace pompi
                 return repetition_count_;
             }
 
+            void SetRepetitionCount(unsigned long int count)
+            {
+                repetition_count_ = count;
+            }
+
             /**
              * @return Sum of all calls since latest reset
              */
@@ -302,7 +307,7 @@ namespace pompi
             double GetAverageTimeOverTotal()
             {
 #ifndef _OPENMP
-                return GetTotalTimeUsec() / 1e6;
+                return GetAverageTimeOverTotalUsec() / 1e6;
 #endif
                 return GetTotalTime()/repetition_count_;
             }
@@ -405,6 +410,12 @@ namespace pompi
              * @see Start()
              */
             void Stop();
+
+            /**
+             * Sets repetition count
+             * @param count new count
+             */
+            void SetRepetitionCount(unsigned long int count);
 
             /**
              * Provides accumulated execution time betwwn all pairs of Start()
@@ -529,7 +540,7 @@ namespace pompi
     {
 
 #ifdef _OPENMP
-        max_threads_ = omp_get_max_threads();
+        max_threads_ = 24;//omp_get_max_threads();
         printf("[Log] OpenMP has been found, Maximum number of threads is %d\n", max_threads_);
 #else
         max_threads_ = 1;
@@ -724,6 +735,12 @@ namespace pompi
     }
 
 
+    void Base::SetRepetitionCount(unsigned long int count)
+    {
+        timer_.SetRepetitionCount(count);
+    }
+
+
     double Base::GetExecutionTime()
     {
         return timer_.GetAggregatedTime();
@@ -841,6 +858,12 @@ namespace pompi
             stats.push_back(D_MIPS);
             stats.push_back(D_GIPS);
         }
+
+        if (EventAvailable(PAPI_TLB_DM))
+        {
+            stats.push_back(D_TLBM_PC);
+            stats.push_back(D_TLBM_PS);
+        }
     }
 
 
@@ -877,24 +900,32 @@ namespace pompi
                     return 100.0 * (counters[GetEventIndex(PAPI_BR_MSP)] / (double)(counters[GetEventIndex(PAPI_BR_MSP)] + counters[GetEventIndex(PAPI_BR_PRC)]));
             }
             case D_GIPC: {
-                return (counters[GetEventIndex(PAPI_TOT_INS)] / (double)counters[GetEventIndex(PAPI_TOT_CYC)]);
+                return (static_cast<double>(counters[GetEventIndex(PAPI_TOT_INS)]) / counters[GetEventIndex(PAPI_TOT_CYC)]);
             }
             case D_IIPC: {
-                return (counters[GetEventIndex(PAPI_TOT_IIS)] / (double)counters[GetEventIndex(PAPI_TOT_CYC)]);
+                return (static_cast<double>(counters[GetEventIndex(PAPI_TOT_IIS)]) / counters[GetEventIndex(PAPI_TOT_CYC)]);
             }
             case D_MFLOPS: {
-                return (counters[GetEventIndex(PAPI_FP_INS)] / timer_.GetAggregatedTime()) / 1e6;
+                return (static_cast<double>(counters[GetEventIndex(PAPI_FP_INS)]) / timer_.GetAggregatedTime()) / 1e6;
             }
             case D_GFLOPS: {
-                return (counters[GetEventIndex(PAPI_FP_INS)] / timer_.GetAggregatedTime()) / 1e9;
+                return (static_cast<double>(counters[GetEventIndex(PAPI_FP_INS)]) / timer_.GetAggregatedTime()) / 1e9;
             }
             case D_MIPS: {
-                return (counters[GetEventIndex(PAPI_TOT_INS)] / timer_.GetAggregatedTime()) / 1e6;
+                return (static_cast<double>(counters[GetEventIndex(PAPI_TOT_INS)]) / timer_.GetAggregatedTime()) / 1e6;
             }
             case D_GIPS: {
-                return (counters[GetEventIndex(PAPI_TOT_INS)] / timer_.GetAggregatedTime()) / 1e9;
+                return (static_cast<double>(counters[GetEventIndex(PAPI_TOT_INS)]) / timer_.GetAggregatedTime()) / 1e9;
+            }
+            case D_TLBM_PC: {
+                return (static_cast<double>(counters[GetEventIndex(PAPI_TLB_DM)]) / timer_.GetRepetitionCount());
+            }
+            case D_TLBM_PS: {
+                return (static_cast<double>(counters[GetEventIndex(PAPI_TLB_DM)]) / timer_.GetAggregatedTime());
             }
         }
+
+        return 0;
     }
 
     // Add new derived stat translations here
@@ -941,7 +972,14 @@ namespace pompi
             case D_GIPS: {
                 return "D_GIPS";
             }
+            case D_TLBM_PC: {
+                return "D_TLBM_PC";
+            }
+            case D_TLBM_PS: {
+                return "D_TLBM_PS";
+            }
         }
+        return "";
     }
 
     template < typename T >
